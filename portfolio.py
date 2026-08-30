@@ -1,5 +1,5 @@
 """
-TelePay Portfolio Manager
+Telesyph Portfolio Manager
 
 Tracks user holdings per chain.
 All balances tracked in USD + native token amounts.

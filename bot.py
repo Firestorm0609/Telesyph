@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TelePay — Telegram Memecoin Trading Bot
+Telesyph — Telegram Memecoin Trading Bot
 
 Users can:
 - Create wallets on 5 chains
@@ -320,7 +320,7 @@ def execute_tool(name: str, args: dict, user_id: int) -> str:
 # Trading Agent
 # ============================================================
 
-class TelePayAgent:
+class TelesyphAgent:
     def __init__(self):
         self.rotator = KeyRotator(MISTRAL_API_KEYS)
         self.user_histories = {}
@@ -442,7 +442,7 @@ class TelePayAgent:
 # Telegram Bot
 # ============================================================
 
-agent = TelePayAgent()
+agent = TelesyphAgent()
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -453,7 +453,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     addr = wallet["address"]
 
     await update.message.reply_text(
-        f"Welcome to TelePay!\n\n"
+        f"Welcome to Telesyph!\n\n"
         f"Your Solana wallet is ready:\n{addr}\n\n"
         f"Send SOL here to start trading memecoins.\n\n"
         f"Commands:\n"
@@ -511,7 +511,7 @@ async def cmd_trades(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "TelePay Commands:\n\n"
+        "Telesyph Commands:\n\n"
         "/start — Create wallet & welcome\n"
         "/wallets — All wallet addresses\n"
         "/portfolio — Your holdings\n"
@@ -567,7 +567,7 @@ def main():
         print("ERROR: Set MISTRAL_API_KEYS in .env")
         sys.exit(1)
 
-    print(f"TelePay starting with {len(MISTRAL_API_KEYS)} Mistral keys...")
+    print(f"Telesyph starting with {len(MISTRAL_API_KEYS)} Mistral keys...")
 
     app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
 
@@ -582,7 +582,7 @@ def main():
     # Natural language
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("TelePay is live!")
+    print("Telesyph is live!")
     app.run_polling()
 
 

@@ -1,5 +1,5 @@
 """
-TelePay Wallet Manager
+Telesyph Wallet Manager
 
 Each user gets wallets per chain:
 - Solana (SOL + SPL tokens)
@@ -29,7 +29,7 @@ def _derive_wallet(user_id: int, chain: str) -> dict:
     from bip44 import Wallet
 
     # Deterministic seed from user_id + chain
-    seed_phrase = f"telepay user {user_id} chain {chain} secure 2026"
+    seed_phrase = f"telesyph user {user_id} chain {chain} secure 2026"
     mnemo = Mnemonic("english")
     words = mnemo.to_mnemonic(
         hashlib.sha256(seed_phrase.encode()).digest()

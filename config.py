@@ -1,5 +1,5 @@
 """
-TelePay Configuration
+Telesyph Configuration
 """
 import os
 from pathlib import Path

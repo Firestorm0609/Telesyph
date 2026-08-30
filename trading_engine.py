@@ -1,5 +1,5 @@
 """
-TelePay Trading Engine
+Telesyph Trading Engine
 
 Multi-chain DEX integration:
 - Jupiter (Solana) — best aggregator
