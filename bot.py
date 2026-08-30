@@ -353,7 +353,12 @@ class TelesyphAgent:
                         except json.JSONDecodeError:
                             tool_args = {}
 
-                        result = execute_tool(tool_name, tool_args, user_id)
+                        logger.info(f"Tool call: {tool_name}({json.dumps(tool_args)[:100]})")
+                        try:
+                            result = execute_tool(tool_name, tool_args, user_id)
+                        except Exception as tool_err:
+                            result = f"Tool error: {str(tool_err)}"
+                            logger.error(f"Tool {tool_name} failed: {tool_err}")
                         if len(result) > 1000:
                             result = result[:1000] + "... (truncated)"
                         history.append({
