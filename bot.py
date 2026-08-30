@@ -8,15 +8,11 @@ Users can:
 - Buy/sell memecoins via DEX
 - Check prices, rug check, trending tokens
 - Track portfolio and trade history
-
-Architecture: Mistral LLM + function calling + multi-chain DEX
 """
 
 import sys
 import json
 import logging
-import asyncio
-from typing import Optional
 from openai import OpenAI
 
 from telegram import Update, BotCommand
@@ -42,19 +38,14 @@ from portfolio import (
     get_portfolio_summary, get_trade_history,
 )
 
-# ============================================================
-# Logging
-# ============================================================
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# ============================================================
-# System Prompt
-# ============================================================
 SYSTEM_PROMPT = open("system_prompt.txt").read()
+
 
 # ============================================================
 # Mistral Key Rotator
@@ -86,27 +77,20 @@ class KeyRotator:
 
 
 # ============================================================
-# Tool Definitions (Mistral function calling format)
+# Tool Definitions
 # ============================================================
 
 TOOLS = [
-    # Wallet
     {"type": "function", "function": {"name": "create_wallet", "description": "Create a wallet for user on a chain. Chains: solana, ethereum, base, bsc, robinhood", "parameters": {"type": "object", "properties": {"chain": {"type": "string"}}, "required": ["chain"]}}},
     {"type": "function", "function": {"name": "get_wallets", "description": "Get all user wallets and addresses", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "get_wallet_address", "description": "Get deposit address for a specific chain", "parameters": {"type": "object", "properties": {"chain": {"type": "string"}}, "required": ["chain"]}}},
     {"type": "function", "function": {"name": "get_supported_chains", "description": "List all supported blockchains", "parameters": {"type": "object", "properties": {}}}},
-
-    # Trading
     {"type": "function", "function": {"name": "get_token_price", "description": "Get token price, volume, liquidity, 24h change. Give token contract address.", "parameters": {"type": "object", "properties": {"token_address": {"type": "string"}, "chain": {"type": "string"}}, "required": ["token_address"]}}},
     {"type": "function", "function": {"name": "get_trending", "description": "Get trending tokens on a chain. Chain: solana or ethereum", "parameters": {"type": "object", "properties": {"chain": {"type": "string"}}, "required": ["chain"]}}},
     {"type": "function", "function": {"name": "rug_check", "description": "Analyze token safety — checks liquidity, volume, volatility. Give token contract address.", "parameters": {"type": "object", "properties": {"token_address": {"type": "string"}, "chain": {"type": "string"}}, "required": ["token_address"]}}},
     {"type": "function", "function": {"name": "get_swap_quote", "description": "Get a swap quote. For Solana: give input_mint and output_mint addresses. For EVM: give token_in and token_out addresses.", "parameters": {"type": "object", "properties": {"input_token": {"type": "string"}, "output_token": {"type": "string"}, "amount": {"type": "number"}, "chain": {"type": "string"}}, "required": ["input_token", "output_token", "amount", "chain"]}}},
-
-    # Portfolio
     {"type": "function", "function": {"name": "get_portfolio", "description": "Show user's portfolio and holdings", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "get_trade_history", "description": "Show recent trades", "parameters": {"type": "object", "properties": {"n": {"type": "number"}}}}},
-
-    # Internal
     {"type": "function", "function": {"name": "record_buy", "description": "Record a buy trade in portfolio. Call AFTER executing a swap.", "parameters": {"type": "object", "properties": {"chain": {"type": "string"}, "symbol": {"type": "string"}, "amount": {"type": "number"}, "price_usd": {"type": "number"}, "token_address": {"type": "string"}}, "required": ["chain", "symbol", "amount", "price_usd"]}}},
     {"type": "function", "function": {"name": "record_sell", "description": "Record a sell trade in portfolio. Call AFTER executing a swap.", "parameters": {"type": "object", "properties": {"chain": {"type": "string"}, "symbol": {"type": "string"}, "amount": {"type": "number"}, "price_usd": {"type": "number"}}, "required": ["chain", "symbol", "amount", "price_usd"]}}},
     {"type": "function", "function": {"name": "search_token", "description": "Search for a token by name or symbol to find its contract address", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
@@ -114,12 +98,10 @@ TOOLS = [
 
 
 # ============================================================
-# Tool Execution
+# Tool Execution (all synchronous)
 # ============================================================
 
-def execute_tool(name: str, args: dict, user_id: int) -> str:
-    """Execute a tool and return the result."""
-
+def execute_tool(name, args, user_id):
     if name == "create_wallet":
         chain = args.get("chain", "solana").lower()
         result = create_wallet(user_id, chain)
@@ -157,10 +139,7 @@ def execute_tool(name: str, args: dict, user_id: int) -> str:
     elif name == "get_token_price":
         token_address = args.get("token_address", "")
         chain = args.get("chain", "solana")
-        import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            get_token_price(token_address, chain)
-        )
+        result = get_token_price(token_address, chain)
         if "error" in result:
             return f"Token not found: {result['error']}"
         change = float(result.get("change_24h", "0"))
@@ -177,15 +156,12 @@ def execute_tool(name: str, args: dict, user_id: int) -> str:
 
     elif name == "get_trending":
         chain = args.get("chain", "solana").lower()
-        import asyncio
         if chain == "solana":
-            tokens = asyncio.get_event_loop().run_until_complete(get_trending_solana())
+            tokens = get_trending_solana()
         else:
-            tokens = asyncio.get_event_loop().run_until_complete(get_trending_ethereum())
-
+            tokens = get_trending_ethereum()
         if not tokens:
             return "No trending tokens found."
-
         lines = [f"Trending on {chain}:\n"]
         for i, t in enumerate(tokens[:10], 1):
             change = float(t.get("change_24h", "0"))
@@ -197,13 +173,9 @@ def execute_tool(name: str, args: dict, user_id: int) -> str:
     elif name == "rug_check":
         token_address = args.get("token_address", "")
         chain = args.get("chain", "solana")
-        import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            rug_check(token_address, chain)
-        )
+        result = rug_check(token_address, chain)
         if result["risk"] == "unknown":
             return f"Rug check: {result['message']}"
-
         risk_emoji = {"LOW": "🟢", "MEDIUM": "🟡", "HIGH": "🔴"}
         lines = [
             f"Rug Check: {result['name']} ({result['symbol']})\n",
@@ -213,7 +185,7 @@ def execute_tool(name: str, args: dict, user_id: int) -> str:
             f"Volume 24h: ${result['volume_24h']:,.0f}",
         ]
         if result["warnings"]:
-            lines.append(f"\nWarnings:")
+            lines.append("\nWarnings:")
             for w in result["warnings"]:
                 lines.append(f"  ⚠️ {w}")
         return "\n".join(lines)
@@ -223,31 +195,19 @@ def execute_tool(name: str, args: dict, user_id: int) -> str:
         output_token = args.get("output_token", "")
         amount = args.get("amount", 0)
         chain = args.get("chain", "solana")
-
-        # Convert SOL amount to lamports (1 SOL = 1e9 lamports)
         amount_lamports = int(amount * 1e9) if chain == "solana" else int(amount * 1e18)
-
-        import asyncio
         if chain == "solana":
-            quote = asyncio.get_event_loop().run_until_complete(
-                jupiter_quote(input_token, output_token, amount_lamports)
-            )
+            quote = jupiter_quote(input_token, output_token, amount_lamports)
         else:
-            quote = asyncio.get_event_loop().run_until_complete(
-                uniswap_quote(input_token, output_token, amount_lamports, chain)
-            )
-
+            quote = uniswap_quote(input_token, output_token, amount_lamports, chain)
         if "error" in quote:
             return f"Quote failed: {quote['error']}"
-
-        # Parse Jupiter quote
         if "outAmount" in quote:
-            out_amount = int(quote["outAmount"]) / 1e6  # assuming USDC decimals
+            out_amount = int(quote["outAmount"]) / 1e6
             return (
                 f"Swap Quote ({chain}):\n"
                 f"  Input: {amount} tokens\n"
                 f"  Output: ~{out_amount:.2f} tokens\n"
-                f"  Route: {' -> '.join(quote.get('routePlan', [{}])[0].get('swapInfo', {}).get('label', 'Direct') if quote.get('routePlan') else 'Direct')}\n"
                 f"  Price impact: {quote.get('priceImpactPct', '0')}%"
             )
         return json.dumps(quote)[:500]
@@ -282,23 +242,17 @@ def execute_tool(name: str, args: dict, user_id: int) -> str:
 
     elif name == "search_token":
         query = args.get("query", "")
-        import asyncio
-        # Search via DexScreener
-        async def _search():
-            import httpx
-            url = f"https://api.dexscreener.com/latest/dex/search?q={query}"
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    pairs = data.get("pairs", [])[:5]
-                    return pairs
-            return []
-
-        pairs = asyncio.get_event_loop().run_until_complete(_search())
+        import httpx
+        url = f"https://api.dexscreener.com/latest/dex/search?q={query}"
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                pairs = data.get("pairs", [])[:5]
+            else:
+                pairs = []
         if not pairs:
             return f"No tokens found for '{query}'"
-
         lines = [f"Search results for '{query}':\n"]
         for p in pairs:
             base = p.get("baseToken", {})
@@ -325,17 +279,13 @@ class TelesyphAgent:
         self.rotator = KeyRotator(MISTRAL_API_KEYS)
         self.user_histories = {}
 
-    def _get_history(self, user_id: int):
+    def _get_history(self, user_id):
         if user_id not in self.user_histories:
-            self.user_histories[user_id] = [
-                {"role": "system", "content": SYSTEM_PROMPT}
-            ]
+            self.user_histories[user_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
         history = self.user_histories[user_id]
-        # Keep system prompt + last 10 messages
         if len(history) > 12:
             system = history[0]
             kept = history[-10:]
-            # Summarize dropped messages
             dropped = history[1:-10]
             topics = []
             for msg in dropped:
@@ -353,7 +303,7 @@ class TelesyphAgent:
             history.extend(kept)
         return history
 
-    def handle_message(self, user_id: int, message: str) -> str:
+    def handle_message(self, user_id, message):
         history = self._get_history(user_id)
         history.append({"role": "user", "content": message})
 
@@ -379,7 +329,6 @@ class TelesyphAgent:
                         history.append({"role": "assistant", "content": msg.content or ""})
                         return msg.content or "(No response)"
 
-                    # Process tool calls
                     tool_calls_data = []
                     for tc in msg.tool_calls:
                         args = tc.function.arguments
@@ -445,13 +394,11 @@ class TelesyphAgent:
 agent = TelesyphAgent()
 
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_start(update, context):
     user_id = update.effective_user.id
-    # Auto-create Solana wallet on first use
     result = create_wallet(user_id, "solana")
     wallet = result["wallet"]
     addr = wallet["address"]
-
     await update.message.reply_text(
         f"Welcome to Telesyph!\n\n"
         f"Your Solana wallet is ready:\n{addr}\n\n"
@@ -465,13 +412,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def cmd_wallets(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_wallets(update, context):
     user_id = update.effective_user.id
     wallets = get_wallets(user_id)
     if not wallets:
         await update.message.reply_text("No wallets yet. Say 'create wallet ethereum' to add one.")
         return
-
     lines = ["Your wallets:\n"]
     for chain, w in wallets.items():
         info = SUPPORTED_CHAINS.get(chain, {})
@@ -480,22 +426,19 @@ async def cmd_wallets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
-async def cmd_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_portfolio(update, context):
     await update.message.reply_text(get_portfolio_summary(update.effective_user.id))
 
 
-async def cmd_trending(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_trending(update, context):
     chain = context.args[0] if context.args else "solana"
-    import asyncio
     if chain == "solana":
-        tokens = await get_trending_solana()
+        tokens = get_trending_solana()
     else:
-        tokens = await get_trending_ethereum()
-
+        tokens = get_trending_ethereum()
     if not tokens:
         await update.message.reply_text("No trending tokens found.")
         return
-
     lines = [f"Trending on {chain}:\n"]
     for i, t in enumerate(tokens[:10], 1):
         change = float(t.get("change_24h", "0"))
@@ -504,12 +447,12 @@ async def cmd_trending(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
-async def cmd_trades(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_trades(update, context):
     n = int(context.args[0]) if context.args else 10
     await update.message.reply_text(get_trade_history(update.effective_user.id, n))
 
 
-async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_help(update, context):
     await update.message.reply_text(
         "Telesyph Commands:\n\n"
         "/start — Create wallet & welcome\n"
@@ -528,23 +471,21 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update, context):
     user_id = update.effective_user.id
     message = update.message.text
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-
     try:
         response = agent.handle_message(user_id, message)
     except Exception as e:
         logger.error(f"Error: {e}")
         response = f"Error: {str(e)}"
-
     if len(response) > 4000:
         response = response[:4000] + "\n\n... (truncated)"
     await update.message.reply_text(response)
 
 
-async def post_init(application: Application):
+async def post_init(application):
     await application.bot.set_my_commands([
         BotCommand("start", "Create wallet & welcome"),
         BotCommand("wallets", "All wallet addresses"),
@@ -555,10 +496,6 @@ async def post_init(application: Application):
     ])
 
 
-# ============================================================
-# Main
-# ============================================================
-
 def main():
     if not TELEGRAM_TOKEN:
         print("ERROR: Set TELEGRAM_TOKEN in .env")
@@ -566,22 +503,15 @@ def main():
     if not MISTRAL_API_KEYS:
         print("ERROR: Set MISTRAL_API_KEYS in .env")
         sys.exit(1)
-
     print(f"Telesyph starting with {len(MISTRAL_API_KEYS)} Mistral keys...")
-
     app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
-
-    # Commands
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("wallets", cmd_wallets))
     app.add_handler(CommandHandler("portfolio", cmd_portfolio))
     app.add_handler(CommandHandler("trending", cmd_trending))
     app.add_handler(CommandHandler("trades", cmd_trades))
     app.add_handler(CommandHandler("help", cmd_help))
-
-    # Natural language
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
     print("Telesyph is live!")
     app.run_polling()
 
